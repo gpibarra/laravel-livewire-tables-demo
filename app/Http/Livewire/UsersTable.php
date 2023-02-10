@@ -13,8 +13,11 @@ use Rappasoft\LaravelLivewireTables\Views\Columns\LinkColumn;
 use Rappasoft\LaravelLivewireTables\Views\Columns\ButtonGroupColumn;
 use Rappasoft\LaravelLivewireTables\Views\Filters\SelectFilter;
 use Rappasoft\LaravelLivewireTables\Views\Filters\MultiSelectFilter;
+use Rappasoft\LaravelLivewireTables\Views\Filters\MultiSelectDropdownFilter;
 use Rappasoft\LaravelLivewireTables\Views\Filters\DateFilter;
 use Rappasoft\LaravelLivewireTables\Views\Filters\TextFilter;
+use App\Classes\DataTable\Suppport\Views\Filters\DateRangeFilter;
+use App\Classes\DataTable\Suppport\Views\Filters\TextMultiTagFilter;
 use App\Exports\UsersExport;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -82,8 +85,9 @@ class UsersTable extends DataTableComponent
             Column::make('Name')
                 ->sortable()
                 ->searchable()
-                ->secondaryHeader($this->getFilterByKey('name'))
-                ->footer($this->getFilterByKey('name')),
+                // ->secondaryHeader($this->getFilterByKey('name'))
+                // ->footer($this->getFilterByKey('name'))
+                ,
             Column::make('E-mail', 'email')
                 ->sortable()
                 ->searchable()
@@ -156,15 +160,15 @@ class UsersTable extends DataTableComponent
     public function filters(): array
     {
         return [
-            TextFilter::make('Name')
-                ->config([
-                    'maxlength' => 10,
-                    'placeholder' => 'Search Name',
-                ])
-                ->filter(function(Builder $builder, string $value) {
-                    $builder->where('users.name', 'like', '%'.$value.'%');
-                })
-                ->hiddenFromMenus(),
+            TextMultiTagFilter::make('Name')
+                ->config([])
+                ->filter(function(Builder $builder, array $values) {
+                    $builder->where(function(Builder $q) use ($values) {
+                        foreach ($values as $value) {
+                            $q->orWhere('users.name', 'like', '%'.$value.'%');
+                        }
+                    });
+                }),
             TextFilter::make('E-mail')
                 ->config([
                     'maxlength' => 10,
@@ -186,7 +190,7 @@ class UsersTable extends DataTableComponent
                     $builder->whereHas('tags', fn($query) => $query->whereIn('tags.id', $values));
                 })
                 ->setFilterPillValues([
-                    '3' => 'Tag 1',        
+                    '3' => 'Tag 1',
                 ]),
             SelectFilter::make('E-mail Verified', 'email_verified_at')
                 ->setFilterPillTitle('Verified')
@@ -221,17 +225,18 @@ class UsersTable extends DataTableComponent
                     }
                 })
                 ->hiddenFromAll(),
-            DateFilter::make('Verified From')
+            DateRangeFilter::make('Verified Range')
                 ->config([
-                    'min' => '2020-01-01',
-                    'max' => '2021-12-31',
+                    'min' => null, // Optional
+                    'max' => now()->format('Y-m-d') // Optional
                 ])
-                ->filter(function(Builder $builder, string $value) {
-                    $builder->where('email_verified_at', '>=', $value);
-                }),
-            DateFilter::make('Verified To')
-                ->filter(function(Builder $builder, string $value) {
-                    $builder->where('email_verified_at', '<=', $value);
+                ->filter(function(Builder $builder, array $values) {
+                    if (!empty($values)) {
+                        $from = date($values[0] . ' 00:00:00');
+                        $to = date($values[1] . ' 23:59:59');
+                        $builder->whereBetween('email_verified_at', [$from, $to]);
+                    }
+                    return $builder;
                 }),
         ];
     }
